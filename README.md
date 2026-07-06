@@ -3,25 +3,50 @@
 ## Buildpack ID: `paketo-buildpacks/apt`
 ## Registry URLs: `docker.io/paketobuildpacks/apt`
 
-The Paketo Buildpack for Apt is a Cloud Native Buildpack that that allows you to install additional dependencies for both build and runtime using Apt. This *only* works on containers that include a shell and Apt itself.
+The Paketo Buildpack for Apt is a Cloud Native Buildpack that allows you to install additional dependencies for both build and runtime using Apt. This *only* works on containers that include a shell and Apt itself.
 
 ## Behavior
 
-This buildpack will participate if all the following conditions are met:
+This buildpack will participate if any of the following conditions are met:
 
 * `<APPLICATION_ROOT>/Aptfile` exists
+* `$BP_APT_PACKAGES` is set to a non-empty value
 
 The buildpack will do the following:
 
-* Read the `<APPLICATION_ROOT>/Aptfile`.
+* Read the `<APPLICATION_ROOT>/Aptfile` (or the packages specified via `$BP_APT_PACKAGES`).
 * For each package from the `Aptfile`, it will download and install the package into a layer.
 
 ## Configuration
 
 | Environment Variable | Description |
 | -------------------- | ----------- |
+| `BP_APT_PACKAGES`    | Space-separated list of apt packages to install. Alternative to `Aptfile` when that file cannot be included in the build container (e.g., Spring Boot Gradle plugin's `bootBuildImage`). |
+| `BP_APT_REPOS`      | Semicolon-separated list of custom apt repository entries. Supports `:repo:deb` and `:repo:key` formats. Alternative to `Aptfile` for corporate/internal repositories. |
 
-There are no environment variable configuration options.
+### BP_APT_PACKAGES
+
+The `BP_APT_PACKAGES` environment variable provides an alternative way to specify apt packages when `Aptfile` is not available in the build container. This is especially useful with build tools that do not copy project files into the build container, such as the Spring Boot Gradle plugin's `bootBuildImage`.
+
+```
+BP_APT_PACKAGES="curl wget"
+```
+
+This will install the `curl` and `wget` packages. Each package is installed via `apt-get install`.
+
+Note: `.deb` URLs are supported. For custom repositories (`:repo:deb`) and GPG keys (`:repo:key`), see `BP_APT_REPOS` below.
+
+### BP_APT_REPOS
+
+The `BP_APT_REPOS` environment variable provides an alternative way to specify custom apt repositories and GPG keys when `Aptfile` is not available. Use this alongside `BP_APT_PACKAGES` to install packages from corporate or internal repositories.
+
+Multiple entries are separated by semicolons (`;;`):
+
+```
+BP_APT_REPOS=":repo:deb https://binary.example.com/ubuntu noble main universe;;:repo:key https://keyserver.example.com/repo-key.gpg"
+```
+
+This adds the repository and GPG key, then any packages from `BP_APT_PACKAGES` or pulled from that repo will be installed.
 
 ### Aptfile
 

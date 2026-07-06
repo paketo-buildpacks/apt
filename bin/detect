@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bin/detect <build-dir>
 
-if [[ -f Aptfile ]]; then
+if [[ -f Aptfile ]] || [[ -n "${BP_APT_PACKAGES:-}" ]]; then
   echo "Apt" && exit 0
 else
   echo "no" && exit 1
