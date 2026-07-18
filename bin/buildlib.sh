@@ -12,7 +12,7 @@
 #   * Physical Aptfile lines are kept as-is.
 #   * BP_APT_PACKAGES is a space-separated list of packages.
 #   * BP_APT_REPOS is a pipe-separated list ('|' separates entries) of
-    #     ':repo:deb' / ':repo:key' lines.
+#     ':repo:deb' / ':repo:key' lines.
 # Blank lines are stripped and the result is sorted + uniq'd.
 build_effective_aptfile() {
   local merged_aptfile
