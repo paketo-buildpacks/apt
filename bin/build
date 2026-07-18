@@ -46,24 +46,26 @@ if [[ -n "${BP_APT_PACKAGES:-}" ]]; then
 fi
 
 apt_layer=$layers_dir/apt
+apt_cache_layer=$layers_dir/apt-cache
 mkdir -p "$apt_layer"
+mkdir -p "$apt_cache_layer"
 
 # Store which STACK we are running on in the cache to bust the cache if it changes
-if [ -f "$apt_layer/STACK" ]; then
-  CACHED_STACK=$(cat "$apt_layer/STACK")
+if [ -f "$apt_cache_layer/STACK" ]; then
+  CACHED_STACK=$(cat "$apt_cache_layer/STACK")
 else
   CACHED_STACK=$CNB_STACK_ID
 fi
 
 # Ensure we store the STACK in the cache for next time.
-echo "$CNB_STACK_ID" > "$apt_layer/STACK"
+echo "$CNB_STACK_ID" > "$apt_cache_layer/STACK"
 
-APT_CACHE_DIR="$apt_layer/cache"
-APT_STATE_DIR="$apt_layer/state"
-APT_SOURCELIST_DIR="$apt_layer/sources"   # place custom sources.list here
+APT_CACHE_DIR="$apt_cache_layer/cache"
+APT_STATE_DIR="$apt_cache_layer/state"
+APT_SOURCELIST_DIR="$apt_cache_layer/sources"   # place custom sources.list here
 APT_SOURCES="$APT_SOURCELIST_DIR/sources.list"
 APT_SOURCEPARTS="$APT_SOURCELIST_DIR/sources.list.d"
-APT_KEYS_DIR="$apt_layer/keys" # place custom GPG keys here
+APT_KEYS_DIR="$apt_cache_layer/keys" # place custom GPG keys here
 APT_VERSION=$(apt-get -v | awk 'NR == 1{ print $2 }')
 
 case "$APT_VERSION" in
@@ -71,18 +73,20 @@ case "$APT_VERSION" in
   *)         APT_FORCE_YES="--allow-downgrades --allow-remove-essential --allow-change-held-packages";;
 esac
 
-if [ -f "$apt_layer/Aptfile" ] && cmp -s Aptfile "$apt_layer/Aptfile" && [[ $CACHED_STACK == "$CNB_STACK_ID" ]] ; then
+if [ -f "$apt_cache_layer/Aptfile" ] && cmp -s Aptfile "$apt_cache_layer/Aptfile" && [[ $CACHED_STACK == "$CNB_STACK_ID" ]] ; then
   topic "Aptfile and stack look the same, reusing cache"
 else
   # Aptfile changed or does not exist or STACK changed
   topic "Detected Aptfile changes, flushing cache"
-  rm -rf "$APT_CACHE_DIR"
+  # Clear extracted packages so removed entries don't persist
+  rm -rf "$apt_layer"/*
+  rm -rf "$APT_CACHE_DIR" "$APT_STATE_DIR" "$APT_SOURCELIST_DIR" "$APT_KEYS_DIR"
   mkdir -p "$APT_CACHE_DIR/archives/partial"
   mkdir -p "$APT_STATE_DIR/lists/partial"
   mkdir -p "$APT_SOURCELIST_DIR" # make dir for sources
   mkdir -p "$APT_SOURCEPARTS"    # make dir for source parts
   mkdir -p "$APT_KEYS_DIR"       # make dir for GPG keys
-  cp -f Aptfile "$apt_layer"/Aptfile
+  cp -f Aptfile "$apt_cache_layer"/Aptfile
   [ -f /etc/apt/sources.list ] && cat "/etc/apt/sources.list" >"$APT_SOURCES" # no cp here
 
   if [ -d "/etc/apt/sources.list.d" ]; then
@@ -297,11 +301,18 @@ else
   find "$apt_layer" -type f -ipath '*/pkgconfig/*.pc' -print0 | xargs -0 --no-run-if-empty -n 1 sed -i -e 's!^prefix=\(.*\)$!prefix='"$apt_layer"'\1!g'
 fi
 
-# write layer toml file
+# write layer toml files
 cat << EOF > "${apt_layer}.toml"
 [types]
   launch = true
   build = true
+  cache = true
+EOF
+
+cat << EOF > "${apt_cache_layer}.toml"
+[types]
+  launch = false
+  build = false
   cache = true
 EOF
 
