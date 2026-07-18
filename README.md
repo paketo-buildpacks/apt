@@ -20,8 +20,13 @@ The buildpack will do the following:
 
 | Environment Variable | Description |
 | -------------------- | ----------- |
+| `BP_APT_RUN_PACKAGES` | Comma-separated list of packages pre-installed in the run image (optional). Use when the run image differs from the build image. |
 
-There are no environment variable configuration options.
+By default, the buildpack automatically detects the run image's base packages for standard Paketo stacks (jammy, noble). If you use a custom run image with additional packages, set `BP_APT_RUN_PACKAGES` to a comma-separated list of packages already present. You can generate this list from your run image:
+
+```
+docker run --rm <your-run-image> dpkg-query -W -f='${Package}\n' | sort | tr '\n' ','
+```
 
 ### Aptfile
 

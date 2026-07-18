@@ -94,6 +94,37 @@ else
   APT_OPTIONS="$APT_OPTIONS -o dir::etc::sourcelist=$APT_SOURCES -o dir::etc::sourceparts=$APT_SOURCEPARTS"
   APT_OPTIONS="$APT_OPTIONS -o dir::etc::trustedparts=$APT_KEYS_DIR"
 
+  # Build a filtered dpkg status that reflects only the run-image's packages.
+  # This prevents apt from treating build-image packages as "already installed"
+  # and skipping their download, which would cause missing dependencies at runtime.
+  buildpack_dir="$(cd "$(dirname "$0")/.." && pwd)"
+  bp_apt_run_packages="${BP_APT_RUN_PACKAGES:-}"
+  run_pkg_list=$(mktemp)
+
+  if [ -n "$bp_apt_run_packages" ]; then
+    echo "$bp_apt_run_packages" | tr ',' '\n' | sort -u > "$run_pkg_list"
+  else
+    os_codename=$(grep -oP 'VERSION_CODENAME=\K.*' /etc/os-release 2>/dev/null || echo "unknown")
+    if [ -f "$buildpack_dir/run-packages/run-${os_codename}-base.list" ]; then
+      cp "$buildpack_dir/run-packages/run-${os_codename}-base.list" "$run_pkg_list"
+    fi
+  fi
+
+  if [ -s "$run_pkg_list" ]; then
+    filtered_status="$APT_STATE_DIR/status"
+    awk '
+      NR == FNR { list[$1]; next }
+      /^$/ {
+        if (pkg && pkg in list) print buf
+        buf = ""; pkg = ""; next
+      }
+      /^Package: / { pkg = $2; buf = $0; next }
+      { buf = buf ORS $0 }
+      END { if (pkg && pkg in list) print buf }
+    ' "$run_pkg_list" /var/lib/dpkg/status > "$filtered_status"
+    APT_OPTIONS="$APT_OPTIONS -o Dir::State::status=$filtered_status"
+  fi
+
   install_package() {
     PACKAGE=$1
     if [[ $PACKAGE == *deb ]]; then
