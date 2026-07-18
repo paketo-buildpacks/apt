@@ -95,8 +95,25 @@ else
   APT_OPTIONS="$APT_OPTIONS -o dir::etc::trustedparts=$APT_KEYS_DIR"
 
   # Build a filtered dpkg status that reflects only the run-image's packages.
-  # This prevents apt from treating build-image packages as "already installed"
-  # and skipping their download, which would cause missing dependencies at runtime.
+  #
+  # When the build and run images differ, apt treats build-image packages as
+  # "already installed" and skips downloading them — even if they aren't in
+  # the run image. At runtime, those missing dependencies cause failures.
+  #
+  # We solve this by filtering /var/lib/dpkg/status to include only packages
+  # known to be in the run image. Packages present in the build image but not
+  # in the run image appear as "not installed" to apt, so it downloads them.
+  #
+  # We must NOT include the real Version or dependency fields from the build
+  # image's dpkg status. If a user-requested package transitively needs a
+  # newer version of a run-image library, apt would see the old version, try
+  # to upgrade it, and fail because the upgraded version's PreDepends (e.g.
+  # libc6 >= 2.38) can't be satisfied by the build image's older libraries.
+  #
+  # Instead we emit a dummy Version (99:999.999.999) that outranks any real
+  # package. This keeps apt from attempting upgrades while still satisfying
+  # its parser, which emits "Encountered status field in a non-version
+  # description" if a stanza has Status: but no Version: field.
   buildpack_dir="$(cd "$(dirname "$0")/.." && pwd)"
   bp_apt_run_packages="${BP_APT_RUN_PACKAGES:-}"
   run_pkg_list=$(mktemp)
@@ -114,13 +131,19 @@ else
     filtered_status="$APT_STATE_DIR/status"
     awk '
       NR == FNR { list[$1]; next }
+      /^Package: / { pkg = $2; arch = ""; next }
+      /^Architecture: / { arch = $2 }
       /^$/ {
-        if (pkg && pkg in list) print buf
-        buf = ""; pkg = ""; next
+        if (pkg && pkg in list) {
+          print "Package: " pkg
+          print "Status: install ok installed"
+          if (arch) print "Architecture: " arch
+          print "Version: 99:999.999.999"
+          print "Description: (base package in run image)"
+          print ""
+        }
+        pkg = ""; arch = ""
       }
-      /^Package: / { pkg = $2; buf = $0; next }
-      { buf = buf ORS $0 }
-      END { if (pkg && pkg in list) print buf }
     ' "$run_pkg_list" /var/lib/dpkg/status > "$filtered_status"
     APT_OPTIONS="$APT_OPTIONS -o Dir::State::status=$filtered_status"
   fi
@@ -135,7 +158,7 @@ else
       curl --silent --show-error --fail -L -z "$PACKAGE_FILE" -o "$PACKAGE_FILE" "$PACKAGE" 2>&1 | indent
     else
       topic "Fetching .debs for $PACKAGE"
-      apt-get $APT_OPTIONS -y $APT_FORCE_YES -d install --reinstall "$PACKAGE" | indent
+      apt-get $APT_OPTIONS -y $APT_FORCE_YES -d install "$PACKAGE" | indent
     fi
   }
 
