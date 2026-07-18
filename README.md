@@ -11,22 +11,25 @@ This buildpack will participate if any of the following conditions are met:
 
 * `<APPLICATION_ROOT>/Aptfile` exists
 * `$BP_APT_PACKAGES` is set to a non-empty value
+* `$BP_APT_REPOS` is set to a non-empty value
 
 The buildpack will do the following:
 
-* Read the `<APPLICATION_ROOT>/Aptfile` (or the packages specified via `$BP_APT_PACKAGES`).
-* For each package from the `Aptfile`, it will download and install the package into a layer.
+* Read the `<APPLICATION_ROOT>/Aptfile` together with the packages and repositories specified via `$BP_APT_PACKAGES` and `$BP_APT_REPOS`.
+* For each package, it will download and install the package into a layer.
+
+The `Aptfile` and the `$BP_APT_PACKAGES` / `$BP_APT_REPOS` environment variables can be used together. When both are provided, their entries are merged, sorted, and de-duplicated so there is no ambiguity.
 
 ## Configuration
 
 | Environment Variable | Description |
 | -------------------- | ----------- |
-| `BP_APT_PACKAGES`    | Space-separated list of apt packages to install. Alternative to `Aptfile` when that file cannot be included in the build container (e.g., Spring Boot Gradle plugin's `bootBuildImage`). |
-| `BP_APT_REPOS`      | Semicolon-separated list of custom apt repository entries. Supports `:repo:deb` and `:repo:key` formats. Alternative to `Aptfile` for corporate/internal repositories. |
+| `BP_APT_PACKAGES`    | Space-separated list of apt packages to install. Can be used instead of, or in addition to, `Aptfile` when that file cannot be included in the build container (e.g., Spring Boot Gradle plugin's `bootBuildImage`). |
+| `BP_APT_REPOS`      | Pipe-separated list of custom apt repository entries. Supports `:repo:deb` and `:repo:key` formats. Can be used instead of, or in addition to, `Aptfile` for corporate/internal repositories. |
 
 ### BP_APT_PACKAGES
 
-The `BP_APT_PACKAGES` environment variable provides an alternative way to specify apt packages when `Aptfile` is not available in the build container. This is especially useful with build tools that do not copy project files into the build container, such as the Spring Boot Gradle plugin's `bootBuildImage`.
+The `BP_APT_PACKAGES` environment variable provides a way to specify apt packages when `Aptfile` is not available in the build container. This is especially useful with build tools that do not copy project files into the build container, such as the Spring Boot Gradle plugin's `bootBuildImage`. It can also be combined with a physical `Aptfile`; in that case the entries from both sources are merged.
 
 ```
 BP_APT_PACKAGES="curl wget"
@@ -38,15 +41,15 @@ Note: `.deb` URLs are supported. For custom repositories (`:repo:deb`) and GPG k
 
 ### BP_APT_REPOS
 
-The `BP_APT_REPOS` environment variable provides an alternative way to specify custom apt repositories and GPG keys when `Aptfile` is not available. Use this alongside `BP_APT_PACKAGES` to install packages from corporate or internal repositories.
+The `BP_APT_REPOS` environment variable provides a way to specify custom apt repositories and GPG keys. Use it alongside `$BP_APT_PACKAGES`, or alongside a physical `Aptfile`, to install packages from corporate or internal repositories. This is useful when you want to bake packages into an image via `Aptfile` but direct where they are fetched from at runtime (for example, different internal repos for dev/staging/prod).
 
-Multiple entries are separated by semicolons (`;;`):
+Multiple entries are separated by the pipe character (`|`):
 
 ```
-BP_APT_REPOS=":repo:deb https://binary.example.com/ubuntu noble main universe;;:repo:key https://keyserver.example.com/repo-key.gpg"
+BP_APT_REPOS=":repo:deb https://binary.example.com/ubuntu noble main universe|:repo:key https://keyserver.example.com/repo-key.gpg"
 ```
 
-This adds the repository and GPG key, then any packages from `BP_APT_PACKAGES` or pulled from that repo will be installed.
+This adds the repository and GPG key, which are then available to any packages from `BP_APT_PACKAGES` or from an `Aptfile`.
 
 ### Aptfile
 
