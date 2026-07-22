@@ -30,7 +30,7 @@ build_effective_aptfile() {
 
   # 3. Repositories/keys from BP_APT_REPOS (pipe-separated; '|' separates entries)
   if [[ -n "${BP_APT_REPOS:-}" ]]; then
-    echo "${BP_APT_REPOS}" | tr '|' '\n' >> "$merged_aptfile"
+    echo "${BP_APT_REPOS}" | tr '|' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' >> "$merged_aptfile"
   fi
 
   # 4. Combine, strip blank lines, sort, and de-duplicate, then write the Aptfile.
