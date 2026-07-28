@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# shellcheck source=bin/buildlib.sh
+source "$(dirname "$0")/buildlib.sh"
 
 # fail fast
 set -eo pipefail
@@ -33,6 +35,12 @@ if compgen -G "${env_dir}/*" > /dev/null; then
     declare "$(basename "${var}")=$(<"${var}")"
   done
 fi
+
+# Build the effective Aptfile by merging a physical Aptfile (if present) with
+# the BP_APT_PACKAGES / BP_APT_REPOS env vars. Packages and repos are
+# combined, sorted, and de-duplicated so Aptfile and the env vars can be
+# used together safely (see bin/buildlib.sh).
+build_effective_aptfile
 
 apt_layer=$layers_dir/apt
 apt_cache_layer=$layers_dir/apt-cache
