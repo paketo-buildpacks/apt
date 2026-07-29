@@ -102,6 +102,54 @@ else
   APT_OPTIONS="$APT_OPTIONS -o dir::etc::sourcelist=$APT_SOURCES -o dir::etc::sourceparts=$APT_SOURCEPARTS"
   APT_OPTIONS="$APT_OPTIONS -o dir::etc::trustedparts=$APT_KEYS_DIR"
 
+  # Build a filtered dpkg status that reflects only the run-image's packages.
+  #
+  # When the build and run images differ, apt treats build-image packages as
+  # "already installed" and skips downloading them — even if they aren't in
+  # the run image. At runtime, those missing dependencies cause failures.
+  #
+  # We solve this by filtering /var/lib/dpkg/status to include only packages
+  # known to be in the run image. Packages present in the build image but not
+  # in the run image appear as "not installed" to apt, so it downloads them.
+  #
+  # We include the real Version field so that packages with exact-version
+  # dependency pins (e.g. Depends: foo (= 1.2.3)) can be resolved correctly.
+  # A dummy version (99:999.999.999) would break those constraints.
+  buildpack_dir="$(cd "$(dirname "$0")/.." && pwd)"
+  bp_apt_run_packages="${BP_APT_RUN_PACKAGES:-}"
+  run_pkg_list=$(mktemp)
+
+  if [ -n "$bp_apt_run_packages" ]; then
+    echo "$bp_apt_run_packages" | tr ',' '\n' | sort -u > "$run_pkg_list"
+  else
+    os_codename=$(grep -oP 'VERSION_CODENAME=\K.*' /etc/os-release 2>/dev/null || echo "unknown")
+    if [ -f "$buildpack_dir/run-packages/run-${os_codename}-base.list" ]; then
+      cp "$buildpack_dir/run-packages/run-${os_codename}-base.list" "$run_pkg_list"
+    fi
+  fi
+
+  if [ -s "$run_pkg_list" ]; then
+    filtered_status="$APT_STATE_DIR/status"
+    awk '
+      NR == FNR { list[$1]; next }
+      /^Package: / { pkg = $2; arch = ""; ver = ""; next }
+      /^Architecture: / { arch = $2 }
+      /^Version: / { ver = $2 }
+      /^$/ {
+        if (pkg && pkg in list) {
+          print "Package: " pkg
+          print "Status: install ok installed"
+          if (arch) print "Architecture: " arch
+          print "Version: " ver
+          print "Description: (base package in run image)"
+          print ""
+        }
+        pkg = ""; arch = ""; ver = ""
+      }
+    ' "$run_pkg_list" /var/lib/dpkg/status > "$filtered_status"
+    APT_OPTIONS="$APT_OPTIONS -o Dir::State::status=$filtered_status"
+  fi
+
   install_package() {
     PACKAGE=$1
     if [[ $PACKAGE == *deb ]]; then
@@ -250,8 +298,13 @@ else
 
   topic "Installing apt packages with dpkg"
   for DEB in $(ls -1 $APT_CACHE_DIR/archives/*.deb); do
-    basename "$DEB" | indent
-    dpkg -x "$DEB" "$apt_layer/"
+    pkg_name=$(basename "$DEB" | sed 's/_[^_]*_[^_]*\.deb$//')
+    if [ -s "$run_pkg_list" ] && grep -qFx "$pkg_name" "$run_pkg_list"; then
+      echo "$(basename "$DEB") (present in run image, skipped)" | indent
+    else
+      basename "$DEB" | indent
+      dpkg -x "$DEB" "$apt_layer/"
+    fi
   done
 
   topic "Writing environment variables"
@@ -297,6 +350,8 @@ else
   topic "Rewrite package-config files"
   find "$apt_layer" -type f -ipath '*/pkgconfig/*.pc' -print0 | xargs -0 --no-run-if-empty -n 1 sed -i -e 's!^prefix=\(.*\)$!prefix='"$apt_layer"'\1!g'
 fi
+
+rm -f "$run_pkg_list"
 
 # write layer toml files
 cat << EOF > "${apt_layer}.toml"

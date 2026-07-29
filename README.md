@@ -26,6 +26,7 @@ The `Aptfile` and the `$BP_APT_PACKAGES` / `$BP_APT_REPOS` environment variables
 | -------------------- | ----------- |
 | `BP_APT_PACKAGES`    | Space-separated list of apt packages to install. Can be used instead of, or in addition to, `Aptfile` when that file cannot be included in the build container (e.g., Spring Boot Gradle plugin's `bootBuildImage`). |
 | `BP_APT_REPOS`      | Pipe-separated list of custom apt repository entries. Supports `:repo:deb` and `:repo:key` formats. Can be used instead of, or in addition to, `Aptfile` for corporate/internal repositories. |
+| `BP_APT_RUN_PACKAGES` | Comma-separated list of packages pre-installed in the run image (optional). Use when the run image differs from the build image. |
 
 ### BP_APT_PACKAGES
 
@@ -50,6 +51,14 @@ BP_APT_REPOS=":repo:deb https://binary.example.com/ubuntu noble main universe|:r
 ```
 
 This adds the repository and GPG key, which are then available to any packages from `BP_APT_PACKAGES` or from an `Aptfile`.
+
+### BP_APT_RUN_PACKAGES
+
+By default, the buildpack automatically detects the run image's base packages for standard Paketo stacks (jammy, noble). If you use a custom run image with additional packages, set `BP_APT_RUN_PACKAGES` to a comma-separated list of packages already present. You can generate this list from your run image:
+
+```
+docker run --rm <your-run-image> dpkg-query -W -f='${Package}\n' | sort | tr '\n' ','
+```
 
 ### Aptfile
 

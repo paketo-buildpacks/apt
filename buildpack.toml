@@ -2,7 +2,7 @@ api = "0.10"
 
 [buildpack]
 id = "paketo-buildpacks/apt"
-version = "0.2.0"
+version = "0.3.0"
 name = "Paketo Buildpack for Apt"
 homepage = "https://github.com/paketo-buildpacks/apt"
 description = "A Cloud Native Buildpack that that allows you to install additional dependencies for both build and runtime using Apt"
